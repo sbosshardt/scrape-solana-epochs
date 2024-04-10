@@ -23,6 +23,7 @@
   "homepage": "https://github.com/sbosshardt/scrape-solana-epochs#readme",
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
+    "csv": "^6.3.8",
     "playwright": "^1.43.0"
   }
 }
