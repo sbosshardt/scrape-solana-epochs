@@ -3,11 +3,24 @@ const {parse} = require('csv-parse')
 const {stringify} = require('csv-stringify/sync')
 const playwright = require('playwright')
 const cheerio = require('cheerio')
+// Maximum number of retries per epoch
+const maxRetries = 2
+// Save the CSV file every nth epoch downloaded
+const bufferSize = 5
+const startEpochNum = 95
 // TODO: support specifying the filename for epochs?
 const filename = 'epochs.csv'
 var epochList = {}
 var epochFBUTimestampIndex = {}
 var epochLBUTimestampIndex = {}
+var pendingWrites = 0
+var programCanRun = true
+
+process.once('SIGINT', function (code) {
+  console.log('SIGINT received...')
+  programCanRun = false
+  writeEpochsCsv()
+})
 
 function unixTime(timestampString) {
   // Replace " at " with " " to make it parseable by Date constructor.
@@ -35,6 +48,9 @@ function addEpochToList(epoch) {
 }
 
 function writeEpochsCsv() {
+  if (pendingWrites === 0) {
+    return
+  }
   // {123: {epoch_num: 123, ...}, 124: {epoch_num: 124, ...}}
   const sortedEpochList = Object.keys(epochList)
     .sort()
@@ -46,19 +62,40 @@ function writeEpochsCsv() {
   const output = stringify(epochs, {
     header: true,
   })
+  console.log('Updating csv file.')
   fs.writeFileSync(filename, output)
 }
 
-function readEpochsCsv() {
+function bufferWriteEpochsCsv() {
+  if (pendingWrites < bufferSize) {
+    return
+  }
+  writeEpochsCsv()
+  pendingWrites = 0
+}
+
+async function readEpochsCsv() {
   if (!fs.existsSync(filename)) {
     console.log('File '+filename+' does not yet exist.')
     return
   }
   const data = fs.readFileSync(filename)
-  const records = parse(data, { columns: true, skip_empty_lines: true })
-  records.forEach(function (epoch) {
+  const records = await parse(data, { columns: true, skip_empty_lines: true })
+  await records.forEach(function (epoch) {
     addEpochToList(epoch)
   })
+}
+
+// Check the epoch list to determine if the epoch is known to be the latest
+function isEpochLatest(epNum) {
+  if (typeof(epochList[epNum]) === 'undefined') {
+    return false
+  }
+  const epoch = epochList[epNum]
+  if (typeof(epoch['next_epoch_num']) === 'undefined' || !epoch['next_epoch_num']) {
+    return true
+  }
+  return false
 }
 
 // e.g. sleep for 1-5 seconds: await randomDelay(1, 5)
@@ -71,9 +108,8 @@ async function randomDelay(minSecs, maxSecs) {
 
 async function main() {
   const browser = await playwright.chromium.launch({ headless: true })
-  //const placeholderPage = await browser.newPage()
-  //await placeholderPage.goto('chrome://version')
 
+  // Can throw an exception if there is a timeout or other error.
   async function scrapeEpochPage(epochNum) {
     const url = 'https://explorer.solana.com/epoch/' + epochNum
     const page = await browser.newPage()
@@ -107,29 +143,45 @@ async function main() {
   //await testEpoch(417)
 
   async function testRange() {
-    // need 392-553 for the year 2023.
-    //for (let epNum = 392; epNum < 553; epNum++) {
-    readEpochsCsv()
+    await readEpochsCsv()
     let delayNeeded = false
-    for (let epNum = 260; epNum < 300; epNum++) {
-      if (typeof(epochList[epNum]) !== 'undefined') {
+    let epNum = startEpochNum - 1
+    while (programCanRun) {
+      epNum++
+      if ((typeof(epochList[epNum]) !== 'undefined') && !isEpochLatest(epNum)) {
         console.log('Epoch '+epNum+' is already known. Skipping.')
         continue
       }
       if (delayNeeded) {
-        await randomDelay(1, 5)
+        await randomDelay(1, 10)
       }
       console.log('Calling scrapeEpochPage() for epoch:', epNum)
-      const epoch = await scrapeEpochPage(epNum)
-      console.log('Scraped epoch:', epoch)
-      epochList[epoch.epoch_num] = epoch
-      delayNeeded = true
-      if (typeof(epoch.next_epoch_num) === 'undefined' || !epoch.next_epoch_num) {
-        console.log('Processed the latest epoch that exists presently.')
-        break;
+      try {
+        const epoch = await scrapeEpochPage(epNum)
+        console.log('Scraped epoch:', epoch)
+        epochList[epoch.epoch_num] = epoch
+        delayNeeded = true
+        if (isEpochLatest(epNum)) {
+          console.log("Processed Solana's latest epoch.")
+          break;
+        }
+        pendingWrites++
+        bufferWriteEpochsCsv()
       }
+      catch (exception) {
+        console.log('Caught an exception!', exception)
+        if (retriesRemaining > 0) {
+          console.log('Will retry epoch at most '+retriesRemaining+' more time(s).')
+          retriesRemaining--
+          continue
+        }
+        else {
+          console.log('No more retries remain. Program will write csv and exit.')
+          break
+        }
+      }
+      retriesRemaining = maxRetries
     }
-    console.log('Finished retrieving. Updating csv file.')
     writeEpochsCsv()
   }
   await testRange()
