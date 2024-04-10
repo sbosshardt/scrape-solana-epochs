@@ -1,0 +1,24 @@
+{
+  "name": "scrape-solana-epochs",
+  "version": "1.0.0",
+  "description": "Scrape epochs details from Solana Explorer",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbosshardt/scrape-solana-epochs.git"
+  },
+  "keywords": [
+    "historical",
+    "data",
+    "crypto"
+  ],
+  "author": "Samuel Bosshardt",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sbosshardt/scrape-solana-epochs/issues"
+  },
+  "homepage": "https://github.com/sbosshardt/scrape-solana-epochs#readme"
+}
