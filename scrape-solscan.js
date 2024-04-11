@@ -17,7 +17,7 @@ var pendingWrites = 0
 var programCanRun = true
 
 process.once('SIGINT', function (code) {
-  console.log('SIGINT received...')
+  console.log('Received SIGINT, exiting...')
   programCanRun = false
   writeEpochsCsv()
 })
@@ -25,6 +25,9 @@ process.once('SIGINT', function (code) {
 function unixTime(timestampString) {
   // Replace " at " with " " to make it parseable by Date constructor.
   const formattedInputDate = timestampString.replace(' at ', ' ')
+  if (!formattedInputDate) {
+    return;
+  }
   // Parse the date string
   const date = new Date(formattedInputDate)
   // getTime() is milliseconds since the Unix Epoch but we want seconds.
@@ -43,8 +46,12 @@ function sleep(time) {
 
 function addEpochToList(epoch) {
   epochList[epoch.epoch_num] = epoch
-  epochFBUTimestampIndex[epoch.first_block_unix_timestamp] = epoch.epoch_num
-  epochLBUTimestampIndex[epoch.last_block_unix_timestamp] = epoch.epoch_num
+  if (typeof(epoch['first_block_unix_timestamp']) !== 'undefined') {
+    epochFBUTimestampIndex[epoch.first_block_unix_timestamp] = epoch.epoch_num
+  }
+  if (typeof(epoch['last_block_unix_timestamp']) !== 'undefined') {
+    epochLBUTimestampIndex[epoch.last_block_unix_timestamp] = epoch.epoch_num
+  }
 }
 
 function writeEpochsCsv() {
