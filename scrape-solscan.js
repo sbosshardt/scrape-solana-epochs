@@ -173,6 +173,7 @@ async function main() {
         if (retriesRemaining > 0) {
           console.log('Will retry epoch at most '+retriesRemaining+' more time(s).')
           retriesRemaining--
+          epNum-- // To compensate for the epNum++ at the beginning of the while().
           continue
         }
         else {
